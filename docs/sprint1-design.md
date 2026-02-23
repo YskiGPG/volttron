@@ -1,105 +1,67 @@
 # Sprint 1 Design Document
 ## Extending Write Access in Home Assistant Driver
 
----
+# Extending Write Access in the Home Assistant Driver
 
-## 1. Background
+## Context and Scope
 
-Currently, the VOLTTRON Home Assistant driver supports:
+### Context
+
+The current VOLTTRON Home Assistant (HA) Driver supports:
 
 - Read access for all Home Assistant entities.
-- Write access only for `light` and `climate` domains.
+- Write access only for `light` and `climate` (thermostat) domains.
 
-The goal of this sprint is to design an architecture that enables write support for additional domains including:
+The Epic backlog item requires extending write-access functionality to currently unsupported device domains.
 
-- `switch`
-- `cover`
-- `fan`
-- `lock`
+### Scope
 
-No implementation is performed during this sprint.
+In Scope:
 
----
+- Architectural design to support write access for:
+  - `switch`
+  - `cover`
+  - `fan`
+  - `lock`
+- Analysis of Home Assistant service APIs for these domains.
+- Evaluation of alternative architectural approaches.
+- Selection of a recommended design.
 
-## 2. Current Architecture Overview
+Out of Scope:
 
-### 2.1 Current Capability
-
-- Read path is generic and supports all entities.
-- Write path is domain-specific and implemented only for `light` and `climate`.
-
-### 2.2 Current Write Flow
-
-1. Driver receives a write request.
-2. The entity domain is identified.
-3. Domain-specific logic constructs the Home Assistant service call.
-4. HTTP request is sent to the Home Assistant REST API.
-5. Home Assistant routes the command to the device.
-
-### 2.3 Identified Limitations
-
-- Write logic is tightly coupled to specific domains.
-- Adding support for new domains requires modifying driver logic.
-- No abstraction layer exists for domain-specific write behavior.
+- Implementation of write functionality.
+- UI changes.
+- Performance optimization.
+- Refactoring unrelated driver components.
+- Supporting every possible Home Assistant domain.
 
 ---
 
-## 3. API Analysis Across Domains
+## Goals and Non-Goals
 
-### 3.1 Domains Compared
+### Goals
 
-- Existing: `light`, `climate`
-- Target: `switch`, `cover`, `fan`, `lock`
+- Enable a scalable architecture for adding new write-supported domains.
+- Maintain clean separation of concerns between driver logic and domain-specific logic.
+- Minimize future modification effort when adding additional domains.
+- Reuse existing HTTP communication mechanisms.
 
-### 3.2 Observed Patterns
+### Non-Goals
 
-- Some domains use binary semantics (`switch`, `lock`).
-- Some require parameterized commands (`climate`, `cover`, `fan`).
-- Some support optional extended parameters (`light`, `fan`).
-
-### 3.3 Architectural Implication
-
-Domain behavior varies significantly. A generalized conditional approach may not scale effectively as new domains are added.
-
----
-
-## 4. Alternative Design Approaches
-
-### 4.1 Option A — Extend Conditional Logic
-
-Extend existing domain-based conditional branches in the driver.
-
-Example conceptually:
-
-```python
-if domain == "light":
-    ...
-elif domain == "climate":
-    ...
-elif domain == "switch":
-    ...
-elif domain == "cover":
-    ...
-```
-
-**Pros**
-
-- Minimal refactor required
-- Low short-term development effort
-
-**Cons**
-
-- Conditional complexity grows linearly with domains
-- Reduced maintainability
-- Violates Open/Closed Principle
+- Rewriting the entire driver architecture.
+- Refactoring read functionality.
+- Implementing plugin systems or dynamic loading.
+- Optimizing runtime performance during this sprint.
 
 ---
 
-### 4.2 Option B — Domain Handler Abstraction (Strategy Pattern)
+## Proposed Design
 
-Introduce a domain-specific handler abstraction.
+We propose introducing a domain-specific handler abstraction using a Strategy Pattern approach.
 
-Each domain implements a handler responsible for constructing the service call.
+### Architectural Overview
+
+Instead of expanding conditional logic inside the driver, each supported domain will implement a `WriteHandler` abstraction responsible for constructing Home Assistant service calls.
 
 Example interface:
 
@@ -112,6 +74,28 @@ class WriteHandler:
         ...
 ```
 
+Each domain implements its own handler:
+
+```python
+class LightHandler(WriteHandler):
+    ...
+
+class ClimateHandler(WriteHandler):
+    ...
+
+class SwitchHandler(WriteHandler):
+    ...
+
+class CoverHandler(WriteHandler):
+    ...
+
+class FanHandler(WriteHandler):
+    ...
+
+class LockHandler(WriteHandler):
+    ...
+```
+
 Driver workflow:
 
 ```python
@@ -120,23 +104,70 @@ service_call = handler.build_service_call(command, value, entity_info)
 send_to_home_assistant(service_call)
 ```
 
-**Pros**
+### Key Properties
 
-- Clear separation of concerns
-- Easier extensibility
-- Improved maintainability
-- Better alignment with software design principles
-- Improved testability
+- The driver detects the entity domain.
+- The appropriate handler is selected from a registry.
+- The handler builds the domain-specific service call.
+- A shared HTTP transport layer sends the request.
 
-**Cons**
-
-- Requires moderate refactor
-- Slightly higher initial complexity
+This ensures domain-specific logic is isolated from core driver logic.
 
 ---
 
-## 5. Tradeoff Comparison
+## Alternatives Considered
 
+### Option A — Extend Conditional Logic
+
+Extend the existing implementation by adding domain-based conditional branches.
+
+Example:
+
+```python
+if domain == "light":
+    ...
+elif domain == "climate":
+    ...
+elif domain == "switch":
+    ...
+elif domain == "cover":
+    ...
+```
+
+Pros:
+
+- Minimal refactor required.
+- Lower short-term effort.
+
+Cons:
+
+- Conditional complexity grows with each domain.
+- Reduced maintainability.
+- Violates Open/Closed Principle.
+- Harder to test domain logic independently.
+
+---
+
+### Option B — Domain Handler Abstraction (Chosen)
+
+Introduce domain-specific handlers implementing a shared abstraction.
+
+Pros:
+
+- Clear separation of concerns.
+- Easier extensibility.
+- Better maintainability.
+- Improved testability.
+- Aligns with sustainable design principles.
+
+Cons:
+
+- Requires moderate refactoring.
+- Slightly higher initial complexity.
+- Requires handler registration mechanism.
+
+---
+---
 | Criteria | Option A | Option B |
 |-----------|-----------|-----------|
 | Implementation effort | Low | Medium |
@@ -146,7 +177,31 @@ send_to_home_assistant(service_call)
 | Long-term sustainability | Weak | Strong |
 
 ---
+## Risks and Tradeoffs
 
-## 6. Final Recommendation
+### Risks
+
+- Refactoring may introduce regression in existing write behavior.
+- Inconsistent service API definitions across domains may complicate handler design.
+- Over-abstraction could introduce unnecessary complexity if future domains are limited.
+
+### Tradeoffs
+
+- Increased architectural complexity vs long-term maintainability.
+- Additional abstraction layer vs cleaner separation of concerns.
+- Slight development overhead vs scalability for future growth.
+
+---
+
+## Open Questions
+
+- Should handler registration be static or dynamically discovered?
+- How should device capability differences be validated at runtime?
+- Should validation logic reside inside handlers or in the driver?
+- How should unsupported service responses from Home Assistant be handled?
+- Should future domains reuse existing handler patterns or define specialized extensions?
+
+
+## Final Recommendation
 
 Option B is recommended due to improved extensibility, maintainability, and architectural clarity for long-term support of additional Home Assistant domains.
