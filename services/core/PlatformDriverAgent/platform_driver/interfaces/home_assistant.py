@@ -27,6 +27,7 @@ import random
 from math import pi
 import json
 import sys
+from abc import ABC, abstractmethod
 from platform_driver.interfaces import BaseInterface, BaseRegister, BasicRevert
 from volttron.platform.agent import utils
 from volttron.platform.vip.agent import Agent
@@ -41,6 +42,221 @@ type_mapping = {"string": str,
                 "float": float,
                 "bool": bool,
                 "boolean": bool}
+
+
+# Strategy Pattern: WriteHandler Architecture
+# Sprint 2 — Introduced abstract base class, HandlerRegistry, and SwitchHandler
+# as a prototype. LockHandler, CoverHandler, FanHandler are deferred to Sprint 3.
+
+class WriteHandler(ABC):
+    """
+    Abstract base class for domain-specific write handlers.
+
+    Each device domain (switch, lock, cover, fan, etc.) implements this interface
+    to encapsulate its own write logic. This follows the Strategy Pattern, allowing
+    _set_point() to dispatch write operations without knowledge of domain specifics.
+
+    Implementing classes must define:
+        - supports(domain): whether this handler handles the given domain
+        - get_service_endpoint(command): returns the HA REST API path for a command
+        - build_service_call(entity_id, command, value): returns the JSON payload dict
+    """
+
+    @abstractmethod
+    def supports(self, domain: str) -> bool:
+        """
+        Return True if this handler supports the given entity domain.
+
+        Args:
+            domain: The entity domain string, e.g. 'switch', 'lock', 'fan'.
+
+        Returns:
+            True if this handler is responsible for the domain.
+        """
+        pass
+
+    @abstractmethod
+    def get_service_endpoint(self, command: str) -> str:
+        """
+        Return the Home Assistant REST API endpoint path for the given command.
+
+        Args:
+            command: A command string such as 'turn_on' or 'turn_off'.
+
+        Returns:
+            The API path, e.g. '/api/services/switch/turn_on'.
+
+        Raises:
+            ValueError: If the command is not supported by this handler.
+        """
+        pass
+
+    @abstractmethod
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        """
+        Build and return the JSON payload dict for the Home Assistant service call.
+
+        Args:
+            entity_id: Full entity ID, e.g. 'switch.living_room_plug'.
+            command: The command to execute.
+            value: The value being set (used for parameterized commands).
+
+        Returns:
+            A dict to be sent as JSON in the POST request body.
+        """
+        pass
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert a numeric registry value to a command string.
+
+        Subclasses should override this method to define their own value mapping.
+
+        Args:
+            value: The integer value from the VOLTTRON registry.
+            entity_point: The entity point being written (e.g. 'state', 'position').
+
+        Returns:
+            A command string understood by get_service_endpoint().
+
+        Raises:
+            ValueError: If the value cannot be mapped to a valid command.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement value_to_command()"
+        )
+
+
+class SwitchHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'switch' domain.
+
+    Supports turning switches on or off via:
+        POST /api/services/switch/turn_on
+        POST /api/services/switch/turn_off
+
+    Value mapping:
+        1 → turn_on
+        0 → turn_off
+
+    Sprint 2 prototype: validates the Strategy Pattern architecture end-to-end.
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "switch"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "turn_on": "/api/services/switch/turn_on",
+            "turn_off": "/api/services/switch/turn_off",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"SwitchHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        return {"entity_id": entity_id}
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to switch command.
+
+        Args:
+            value: 1 for on, 0 for off.
+            entity_point: Must be 'state' for switches.
+
+        Returns:
+            'turn_on' or 'turn_off'.
+
+        Raises:
+            ValueError: If value is not 0 or 1.
+        """
+        if value == 1:
+            return "turn_on"
+        elif value == 0:
+            return "turn_off"
+        else:
+            raise ValueError(
+                f"SwitchHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                f"Expected 0 (off) or 1 (on)."
+            )
+
+
+class HandlerRegistry:
+    """
+    Registry for WriteHandler instances.
+
+    Handlers are registered in order. The first handler whose supports() method
+    returns True for a given domain is used. Raises ValueError if no handler
+    is found for a requested domain.
+
+    Usage:
+        registry = HandlerRegistry()
+        registry.register(SwitchHandler())
+        handler = registry.get_handler("switch")
+    """
+
+    def __init__(self):
+        self._handlers = []
+
+    def register(self, handler: WriteHandler):
+        """
+        Register a WriteHandler instance.
+
+        Args:
+            handler: An instance of a WriteHandler subclass.
+        """
+        self._handlers.append(handler)
+
+    def get_handler(self, domain: str) -> WriteHandler:
+        """
+        Return the handler for the given domain.
+
+        Args:
+            domain: The entity domain string, e.g. 'switch'.
+
+        Returns:
+            The matching WriteHandler instance.
+
+        Raises:
+            ValueError: If no handler supports the given domain.
+        """
+        for handler in self._handlers:
+            if handler.supports(domain):
+                return handler
+        raise ValueError(
+            f"HandlerRegistry: no handler registered for domain '{domain}'. "
+            f"Registered handlers: {[h.__class__.__name__ for h in self._handlers]}"
+        )
+
+
+def create_default_registry() -> HandlerRegistry:
+    """
+    Create and return a HandlerRegistry pre-populated with all available handlers.
+
+    Sprint 2: SwitchHandler is the prototype.
+    Sprint 3 will add: LockHandler, CoverHandler, FanHandler,
+    and eventually LightHandler, ClimateHandler, InputBooleanHandler.
+
+    Returns:
+        A HandlerRegistry instance with handlers registered.
+    """
+    registry = HandlerRegistry()
+    registry.register(SwitchHandler())
+    # Sprint 3 additions:
+    # registry.register(LockHandler())
+    # registry.register(CoverHandler())
+    # registry.register(FanHandler())
+    return registry
+
+
+# =============================================================================
+# End of Strategy Pattern architecture block
+# =============================================================================
 
 
 class HomeAssistantRegister(BaseRegister):
@@ -79,6 +295,8 @@ class Interface(BasicRevert, BaseInterface):
         self.access_token = None
         self.port = None
         self.units = None
+        # Sprint 2: initialize handler registry for Strategy Pattern dispatch
+        self.handler_registry = create_default_registry()
 
     def configure(self, config_dict, registry_config_str):
         self.ip_address = config_dict.get("ip_address", None)
@@ -114,8 +332,45 @@ class Interface(BasicRevert, BaseInterface):
         if register.read_only:
             raise IOError(
                 "Trying to write to a point configured read only: " + point_name)
-        register.value = register.reg_type(value)  # setting the value
+        register.value = register.reg_type(value)
         entity_point = register.entity_point
+        entity_id = register.entity_id
+
+        # ------------------------------------------------------------------
+        # Sprint 2: Strategy Pattern dispatch via HandlerRegistry.
+        #
+        # Extract the domain prefix from entity_id (e.g. "switch" from
+        # "switch.living_room_plug") and attempt to find a registered handler.
+        #
+        # Fallthrough design: if no handler is registered for this domain
+        # (e.g. "light", "climate", "input_boolean"), a ValueError is caught
+        # and execution continues to the original if/elif logic below.
+        # This ensures zero regression for existing supported domains.
+        # ------------------------------------------------------------------
+        domain = entity_id.split(".")[0]
+        try:
+            handler = self.handler_registry.get_handler(domain)
+            command = handler.value_to_command(register.value, entity_point)
+            endpoint = handler.get_service_endpoint(command)
+            payload = handler.build_service_call(entity_id, command, register.value)
+            url = f"http://{self.ip_address}:{self.port}{endpoint}"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            }
+            _post_method(url, headers, payload, f"{command} {entity_id}")
+            return register.value
+        except ValueError as e:
+            # If error came from handler logic (bad value), re-raise immediately.
+            # If error came from get_handler (no handler found), fall through.
+            if "HandlerRegistry: no handler registered" not in str(e):
+                _log.error(str(e))
+                raise
+        # ------------------------------------------------------------------
+        # Original if/elif dispatch — preserved unchanged for light, climate,
+        # and input_boolean domains. To be migrated to handler pattern in Sprint 3.
+        # ------------------------------------------------------------------
+
         # Changing lights values in home assistant based off of register value.
         if "light." in register.entity_id:
             if entity_point == "state":
@@ -130,7 +385,7 @@ class Interface(BasicRevert, BaseInterface):
                     raise ValueError(error_msg)
 
             elif entity_point == "brightness":
-                if isinstance(register.value, int) and 0 <= register.value <= 255:  # Make sure its int and within range
+                if isinstance(register.value, int) and 0 <= register.value <= 255:
                     self.change_brightness(register.entity_id, register.value)
                 else:
                     error_msg = "Brightness value should be an integer between 0 and 255"
@@ -180,7 +435,7 @@ class Interface(BasicRevert, BaseInterface):
                 raise ValueError(error_msg)
         else:
             error_msg = f"Unsupported entity_id: {register.entity_id}. " \
-                        f"Currently set_point is supported only for thermostats and lights"
+                        f"Currently set_point is supported only for thermostats, lights, and switches"
             _log.error(error_msg)
             raise ValueError(error_msg)
         return register.value
@@ -237,7 +492,7 @@ class Interface(BasicRevert, BaseInterface):
                         register.value = attribute
                         result[register.point_name] = attribute
                 # handling light states
-                elif "light." or "input_boolean." in entity_id: # Checks for lights or input bools since they have the same states.
+                elif "light." or "input_boolean." in entity_id:
                     if entity_point == "state":
                         state = entity_data.get("state", None)
                         # Converting light states to numbers.
@@ -253,7 +508,6 @@ class Interface(BasicRevert, BaseInterface):
                         result[register.point_name] = attribute
                 else:  # handling all devices that are not thermostats or light states
                     if entity_point == "state":
-
                         state = entity_data.get("state", None)
                         register.value = state
                         result[register.point_name] = state
@@ -328,7 +582,7 @@ class Interface(BasicRevert, BaseInterface):
         _post_method(url, headers, payload, f"turn on {entity_id}")
 
     def change_thermostat_mode(self, entity_id, mode):
-        # Check if enttiy_id startswith climate.
+        # Check if entity_id startswith climate.
         if not entity_id.startswith("climate."):
             _log.error(f"{entity_id} is not a valid thermostat entity ID.")
             return
