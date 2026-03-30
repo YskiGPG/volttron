@@ -186,6 +186,232 @@ class SwitchHandler(WriteHandler):
             )
 
 
+class LockHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'lock' domain.
+
+    Supports locking or unlocking via:
+        POST /api/services/lock/lock
+        POST /api/services/lock/unlock
+
+    Value mapping:
+        1 → lock
+        0 → unlock
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "lock"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "lock": "/api/services/lock/lock",
+            "unlock": "/api/services/lock/unlock",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"LockHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        return {"entity_id": entity_id}
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to lock command.
+
+        Args:
+            value: 1 for lock, 0 for unlock.
+            entity_point: Must be 'state' for locks.
+
+        Returns:
+            'lock' or 'unlock'.
+
+        Raises:
+            ValueError: If value is not 0 or 1.
+        """
+        if entity_point != "state":
+            raise ValueError(
+                f"LockHandler: unsupported entity_point '{entity_point}'. Expected 'state'."
+            )
+
+        if value == 1:
+            return "lock"
+        elif value == 0:
+            return "unlock"
+        else:
+            raise ValueError(
+                f"LockHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                f"Expected 0 (unlock) or 1 (lock)."
+            )
+
+
+class CoverHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'cover' domain.
+
+    Supports:
+        POST /api/services/cover/open_cover
+        POST /api/services/cover/close_cover
+        POST /api/services/cover/set_cover_position
+
+    Value mapping:
+        For entity_point == 'state':
+            1 → open_cover
+            0 → close_cover
+
+        For entity_point == 'position':
+            any integer 0-100 → set_cover_position with payload {'position': value}
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "cover"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "open_cover": "/api/services/cover/open_cover",
+            "close_cover": "/api/services/cover/close_cover",
+            "set_cover_position": "/api/services/cover/set_cover_position",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"CoverHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        payload = {"entity_id": entity_id}
+        if command == "set_cover_position":
+            payload["position"] = value
+        return payload
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to cover command.
+
+        Args:
+            value: For 'state', 1=open and 0=close.
+                   For 'position', integer from 0 to 100.
+            entity_point: 'state' or 'position'.
+
+        Returns:
+            'open_cover', 'close_cover', or 'set_cover_position'.
+
+        Raises:
+            ValueError: If the value or entity_point is invalid.
+        """
+        if entity_point == "state":
+            if value == 1:
+                return "open_cover"
+            elif value == 0:
+                return "close_cover"
+            else:
+                raise ValueError(
+                    f"CoverHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                    f"Expected 0 (close) or 1 (open)."
+                )
+
+        elif entity_point == "position":
+            if isinstance(value, int) and 0 <= value <= 100:
+                return "set_cover_position"
+            else:
+                raise ValueError(
+                    f"CoverHandler: invalid position '{value}'. Expected integer 0-100."
+                )
+
+        else:
+            raise ValueError(
+                f"CoverHandler: unsupported entity_point '{entity_point}'. "
+                f"Expected 'state' or 'position'."
+            )
+
+
+class FanHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'fan' domain.
+
+    Supports:
+        POST /api/services/fan/turn_on
+        POST /api/services/fan/turn_off
+        POST /api/services/fan/set_percentage
+
+    Value mapping:
+        For entity_point == 'state':
+            1 → turn_on
+            0 → turn_off
+
+        For entity_point == 'percentage':
+            any integer 0-100 → set_percentage with payload {'percentage': value}
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "fan"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "turn_on": "/api/services/fan/turn_on",
+            "turn_off": "/api/services/fan/turn_off",
+            "set_percentage": "/api/services/fan/set_percentage",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"FanHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        payload = {"entity_id": entity_id}
+        if command == "set_percentage":
+            payload["percentage"] = value
+        return payload
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to fan command.
+
+        Args:
+            value: For 'state', 1=on and 0=off.
+                   For 'percentage', integer from 0 to 100.
+            entity_point: 'state' or 'percentage'.
+
+        Returns:
+            'turn_on', 'turn_off', or 'set_percentage'.
+
+        Raises:
+            ValueError: If the value or entity_point is invalid.
+        """
+        if entity_point == "state":
+            if value == 1:
+                return "turn_on"
+            elif value == 0:
+                return "turn_off"
+            else:
+                raise ValueError(
+                    f"FanHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                    f"Expected 0 (off) or 1 (on)."
+                )
+
+        elif entity_point == "percentage":
+            if isinstance(value, int) and 0 <= value <= 100:
+                return "set_percentage"
+            else:
+                raise ValueError(
+                    f"FanHandler: invalid percentage '{value}'. Expected integer 0-100."
+                )
+
+        else:
+            raise ValueError(
+                f"FanHandler: unsupported entity_point '{entity_point}'. "
+                f"Expected 'state' or 'percentage'."
+            )
+
+
 class HandlerRegistry:
     """
     Registry for WriteHandler instances.
@@ -248,9 +474,9 @@ def create_default_registry() -> HandlerRegistry:
     registry = HandlerRegistry()
     registry.register(SwitchHandler())
     # Sprint 3 additions:
-    # registry.register(LockHandler())
-    # registry.register(CoverHandler())
-    # registry.register(FanHandler())
+    registry.register(LockHandler())
+    registry.register(CoverHandler())
+    registry.register(FanHandler())
     return registry
 
 
