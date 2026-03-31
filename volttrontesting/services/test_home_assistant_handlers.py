@@ -5,6 +5,9 @@ from services.core.PlatformDriverAgent.platform_driver.interfaces.home_assistant
     LockHandler,
     CoverHandler,
     FanHandler,
+    LightHandler,
+    ClimateHandler,
+    InputBooleanHandler,
     HandlerRegistry,
 )
 
@@ -238,6 +241,175 @@ class TestFanHandler:
             handler.value_to_command(1, "temperature")
 
 
+class TestLightHandler:
+    def test_supports_light_domain(self):
+        handler = LightHandler()
+        assert handler.supports("light") is True
+        assert handler.supports("switch") is False
+
+    def test_get_service_endpoint_turn_on(self):
+        handler = LightHandler()
+        assert handler.get_service_endpoint("turn_on") == "/api/services/light/turn_on"
+
+    def test_get_service_endpoint_turn_off(self):
+        handler = LightHandler()
+        assert handler.get_service_endpoint("turn_off") == "/api/services/light/turn_off"
+
+    def test_get_service_endpoint_invalid_command(self):
+        handler = LightHandler()
+        with pytest.raises(ValueError, match="unsupported command"):
+            handler.get_service_endpoint("bad_command")
+
+    def test_build_service_call_state(self):
+        handler = LightHandler()
+        payload = handler.build_service_call("light.lamp", "turn_on", 1)
+        assert payload == {"entity_id": "light.lamp"}
+
+    def test_build_service_call_brightness(self):
+        handler = LightHandler()
+        payload = handler.build_service_call("light.lamp", "turn_on", 128)
+        assert payload == {
+            "entity_id": "light.lamp",
+            "brightness": 128,
+        }
+
+    def test_value_to_command_on(self):
+        handler = LightHandler()
+        assert handler.value_to_command(1, "state") == "turn_on"
+
+    def test_value_to_command_off(self):
+        handler = LightHandler()
+        assert handler.value_to_command(0, "state") == "turn_off"
+
+    def test_value_to_command_brightness(self):
+        handler = LightHandler()
+        assert handler.value_to_command(128, "brightness") == "turn_on"
+
+    def test_value_to_command_invalid_state_value(self):
+        handler = LightHandler()
+        with pytest.raises(ValueError, match="Expected 0"):
+            handler.value_to_command(2, "state")
+
+    def test_value_to_command_invalid_brightness_value(self):
+        handler = LightHandler()
+        with pytest.raises(ValueError, match="Expected integer 0-255"):
+            handler.value_to_command(300, "brightness")
+
+    def test_value_to_command_invalid_entity_point(self):
+        handler = LightHandler()
+        with pytest.raises(ValueError, match="unsupported entity_point"):
+            handler.value_to_command(1, "temperature")
+
+
+class TestInputBooleanHandler:
+    def test_supports_input_boolean_domain(self):
+        handler = InputBooleanHandler()
+        assert handler.supports("input_boolean") is True
+        assert handler.supports("light") is False
+
+    def test_get_service_endpoint_turn_on(self):
+        handler = InputBooleanHandler()
+        assert handler.get_service_endpoint("turn_on") == "/api/services/input_boolean/turn_on"
+
+    def test_get_service_endpoint_turn_off(self):
+        handler = InputBooleanHandler()
+        assert handler.get_service_endpoint("turn_off") == "/api/services/input_boolean/turn_off"
+
+    def test_get_service_endpoint_invalid_command(self):
+        handler = InputBooleanHandler()
+        with pytest.raises(ValueError, match="unsupported command"):
+            handler.get_service_endpoint("bad_command")
+
+    def test_build_service_call(self):
+        handler = InputBooleanHandler()
+        payload = handler.build_service_call("input_boolean.test", "turn_on", 1)
+        assert payload == {"entity_id": "input_boolean.test"}
+
+    def test_value_to_command_on(self):
+        handler = InputBooleanHandler()
+        assert handler.value_to_command(1, "state") == "turn_on"
+
+    def test_value_to_command_off(self):
+        handler = InputBooleanHandler()
+        assert handler.value_to_command(0, "state") == "turn_off"
+
+    def test_value_to_command_invalid_value(self):
+        handler = InputBooleanHandler()
+        with pytest.raises(ValueError, match="Expected 0"):
+            handler.value_to_command(2, "state")
+
+    def test_value_to_command_invalid_entity_point(self):
+        handler = InputBooleanHandler()
+        with pytest.raises(ValueError, match="unsupported entity_point"):
+            handler.value_to_command(1, "brightness")
+
+
+class TestClimateHandler:
+    def test_supports_climate_domain(self):
+        handler = ClimateHandler()
+        assert handler.supports("climate") is True
+        assert handler.supports("fan") is False
+
+    def test_get_service_endpoint_set_hvac_mode(self):
+        handler = ClimateHandler()
+        assert handler.get_service_endpoint("set_hvac_mode") == "/api/services/climate/set_hvac_mode"
+
+    def test_get_service_endpoint_set_temperature(self):
+        handler = ClimateHandler()
+        assert handler.get_service_endpoint("set_temperature") == "/api/services/climate/set_temperature"
+
+    def test_get_service_endpoint_invalid_command(self):
+        handler = ClimateHandler()
+        with pytest.raises(ValueError, match="unsupported command"):
+            handler.get_service_endpoint("bad_command")
+
+    def test_build_service_call_off(self):
+        handler = ClimateHandler()
+        payload = handler.build_service_call("climate.room", "set_hvac_mode", 0)
+        assert payload == {"entity_id": "climate.room", "hvac_mode": "off"}
+
+    def test_build_service_call_heat(self):
+        handler = ClimateHandler()
+        payload = handler.build_service_call("climate.room", "set_hvac_mode", 2)
+        assert payload == {"entity_id": "climate.room", "hvac_mode": "heat"}
+
+    def test_build_service_call_cool(self):
+        handler = ClimateHandler()
+        payload = handler.build_service_call("climate.room", "set_hvac_mode", 3)
+        assert payload == {"entity_id": "climate.room", "hvac_mode": "cool"}
+
+    def test_build_service_call_auto(self):
+        handler = ClimateHandler()
+        payload = handler.build_service_call("climate.room", "set_hvac_mode", 4)
+        assert payload == {"entity_id": "climate.room", "hvac_mode": "auto"}
+
+    def test_build_service_call_temperature(self):
+        handler = ClimateHandler()
+        payload = handler.build_service_call("climate.room", "set_temperature", 72)
+        assert payload == {"entity_id": "climate.room", "temperature": 72}
+
+    def test_value_to_command_state(self):
+        handler = ClimateHandler()
+        assert handler.value_to_command(0, "state") == "set_hvac_mode"
+        assert handler.value_to_command(2, "state") == "set_hvac_mode"
+        assert handler.value_to_command(3, "state") == "set_hvac_mode"
+        assert handler.value_to_command(4, "state") == "set_hvac_mode"
+
+    def test_value_to_command_temperature(self):
+        handler = ClimateHandler()
+        assert handler.value_to_command(72, "temperature") == "set_temperature"
+
+    def test_value_to_command_invalid_state_value(self):
+        handler = ClimateHandler()
+        with pytest.raises(ValueError, match="Expected 0, 2, 3, or 4"):
+            handler.value_to_command(1, "state")
+
+    def test_value_to_command_invalid_entity_point(self):
+        handler = ClimateHandler()
+        with pytest.raises(ValueError, match="unsupported entity_point"):
+            handler.value_to_command(72, "percentage")
+
+
 class TestHandlerRegistry:
     def test_register_and_get_switch_handler(self):
         registry = HandlerRegistry()
@@ -253,20 +425,29 @@ class TestHandlerRegistry:
         lock_handler = LockHandler()
         cover_handler = CoverHandler()
         fan_handler = FanHandler()
+        light_handler = LightHandler()
+        climate_handler = ClimateHandler()
+        input_boolean_handler = InputBooleanHandler()
 
         registry.register(switch_handler)
         registry.register(lock_handler)
         registry.register(cover_handler)
         registry.register(fan_handler)
+        registry.register(light_handler)
+        registry.register(climate_handler)
+        registry.register(input_boolean_handler)
 
         assert registry.get_handler("switch") is switch_handler
         assert registry.get_handler("lock") is lock_handler
         assert registry.get_handler("cover") is cover_handler
         assert registry.get_handler("fan") is fan_handler
+        assert registry.get_handler("light") is light_handler
+        assert registry.get_handler("climate") is climate_handler
+        assert registry.get_handler("input_boolean") is input_boolean_handler
 
     def test_get_handler_unregistered_domain(self):
         registry = HandlerRegistry()
         registry.register(SwitchHandler())
 
         with pytest.raises(ValueError, match="no handler registered"):
-            registry.get_handler("climate")
+            registry.get_handler("sensor")

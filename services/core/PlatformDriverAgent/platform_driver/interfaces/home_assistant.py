@@ -412,6 +412,233 @@ class FanHandler(WriteHandler):
             )
 
 
+class LightHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'light' domain.
+
+    Supports:
+        POST /api/services/light/turn_on
+        POST /api/services/light/turn_off
+
+    Value mapping:
+        For entity_point == 'state':
+            1 → turn_on
+            0 → turn_off
+
+        For entity_point == 'brightness':
+            any integer 0-255 → turn_on with payload {'brightness': value}
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "light"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "turn_on": "/api/services/light/turn_on",
+            "turn_off": "/api/services/light/turn_off",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"LightHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        payload = {"entity_id": entity_id}
+        if command == "turn_on" and isinstance(value, int) and 2 <= value <= 255:
+            payload["brightness"] = value
+        return payload
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to light command.
+
+        Args:
+            value: For 'state', 1=on and 0=off.
+                   For 'brightness', integer from 0 to 255.
+            entity_point: 'state' or 'brightness'.
+
+        Returns:
+            'turn_on' or 'turn_off'.
+
+        Raises:
+            ValueError: If the value or entity_point is invalid.
+        """
+        if entity_point == "state":
+            if value == 1:
+                return "turn_on"
+            elif value == 0:
+                return "turn_off"
+            else:
+                raise ValueError(
+                    f"LightHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                    f"Expected 0 (off) or 1 (on)."
+                )
+
+        elif entity_point == "brightness":
+            if isinstance(value, int) and 0 <= value <= 255:
+                return "turn_on"
+            else:
+                raise ValueError(
+                    f"LightHandler: invalid brightness '{value}'. Expected integer 0-255."
+                )
+
+        else:
+            raise ValueError(
+                f"LightHandler: unsupported entity_point '{entity_point}'. "
+                f"Expected 'state' or 'brightness'."
+            )
+
+
+class InputBooleanHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'input_boolean' domain.
+
+    Supports:
+        POST /api/services/input_boolean/turn_on
+        POST /api/services/input_boolean/turn_off
+
+    Value mapping:
+        1 → turn_on
+        0 → turn_off
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "input_boolean"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "turn_on": "/api/services/input_boolean/turn_on",
+            "turn_off": "/api/services/input_boolean/turn_off",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"InputBooleanHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        return {"entity_id": entity_id}
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to input_boolean command.
+
+        Args:
+            value: 1 for on, 0 for off.
+            entity_point: Must be 'state' for input_booleans.
+
+        Returns:
+            'turn_on' or 'turn_off'.
+
+        Raises:
+            ValueError: If value is not 0 or 1.
+        """
+        if entity_point != "state":
+            raise ValueError(
+                f"InputBooleanHandler: unsupported entity_point '{entity_point}'. Expected 'state'."
+            )
+
+        if value == 1:
+            return "turn_on"
+        elif value == 0:
+            return "turn_off"
+        else:
+            raise ValueError(
+                f"InputBooleanHandler: invalid value '{value}' for entity_point '{entity_point}'. "
+                f"Expected 0 (off) or 1 (on)."
+            )
+
+
+class ClimateHandler(WriteHandler):
+    """
+    Write handler for the Home Assistant 'climate' domain.
+
+    Supports:
+        POST /api/services/climate/set_hvac_mode
+        POST /api/services/climate/set_temperature
+
+    Value mapping:
+        For entity_point == 'state':
+            0 → off
+            2 → heat
+            3 → cool
+            4 → auto
+
+        For entity_point == 'temperature':
+            numeric value → set_temperature
+    """
+
+    def supports(self, domain: str) -> bool:
+        return domain == "climate"
+
+    def get_service_endpoint(self, command: str) -> str:
+        endpoints = {
+            "set_hvac_mode": "/api/services/climate/set_hvac_mode",
+            "set_temperature": "/api/services/climate/set_temperature",
+        }
+        endpoint = endpoints.get(command)
+        if endpoint is None:
+            raise ValueError(
+                f"ClimateHandler: unsupported command '{command}'. "
+                f"Valid commands: {list(endpoints.keys())}"
+            )
+        return endpoint
+
+    def build_service_call(self, entity_id: str, command: str, value) -> dict:
+        payload = {"entity_id": entity_id}
+
+        if command == "set_hvac_mode":
+            hvac_modes = {
+                0: "off",
+                2: "heat",
+                3: "cool",
+                4: "auto",
+            }
+            payload["hvac_mode"] = hvac_modes[value]
+
+        elif command == "set_temperature":
+            payload["temperature"] = value
+
+        return payload
+
+    def value_to_command(self, value: int, entity_point: str = "state") -> str:
+        """
+        Convert registry value to climate command.
+
+        Args:
+            value: For 'state', 0=off, 2=heat, 3=cool, 4=auto.
+                   For 'temperature', numeric value.
+            entity_point: 'state' or 'temperature'.
+
+        Returns:
+            'set_hvac_mode' or 'set_temperature'.
+
+        Raises:
+            ValueError: If the value or entity_point is invalid.
+        """
+        if entity_point == "state":
+            if value in [0, 2, 3, 4]:
+                return "set_hvac_mode"
+            else:
+                raise ValueError(
+                    f"ClimateHandler: invalid state '{value}'. Expected 0, 2, 3, or 4."
+                )
+
+        elif entity_point == "temperature":
+            return "set_temperature"
+
+        else:
+            raise ValueError(
+                f"ClimateHandler: unsupported entity_point '{entity_point}'. "
+                f"Expected 'state' or 'temperature'."
+            )
+
+
 class HandlerRegistry:
     """
     Registry for WriteHandler instances.
@@ -477,6 +704,9 @@ def create_default_registry() -> HandlerRegistry:
     registry.register(LockHandler())
     registry.register(CoverHandler())
     registry.register(FanHandler())
+    registry.register(LightHandler())
+    registry.register(ClimateHandler())
+    registry.register(InputBooleanHandler())
     return registry
 
 
@@ -563,107 +793,29 @@ class Interface(BasicRevert, BaseInterface):
         entity_id = register.entity_id
 
         # ------------------------------------------------------------------
-        # Sprint 2: Strategy Pattern dispatch via HandlerRegistry.
+        # Sprint 3: Full Strategy Pattern dispatch via HandlerRegistry.
         #
         # Extract the domain prefix from entity_id (e.g. "switch" from
-        # "switch.living_room_plug") and attempt to find a registered handler.
-        #
-        # Fallthrough design: if no handler is registered for this domain
-        # (e.g. "light", "climate", "input_boolean"), a ValueError is caught
-        # and execution continues to the original if/elif logic below.
-        # This ensures zero regression for existing supported domains.
+        # "switch.living_room_plug"), resolve the appropriate handler,
+        # then delegate command mapping, endpoint resolution, and payload
+        # construction entirely to the handler.
         # ------------------------------------------------------------------
         domain = entity_id.split(".")[0]
-        try:
-            handler = self.handler_registry.get_handler(domain)
-            command = handler.value_to_command(register.value, entity_point)
-            endpoint = handler.get_service_endpoint(command)
-            payload = handler.build_service_call(entity_id, command, register.value)
-            url = f"http://{self.ip_address}:{self.port}{endpoint}"
-            headers = {
-                "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json",
-            }
-            _post_method(url, headers, payload, f"{command} {entity_id}")
-            return register.value
-        except ValueError as e:
-            # If error came from handler logic (bad value), re-raise immediately.
-            # If error came from get_handler (no handler found), fall through.
-            if "HandlerRegistry: no handler registered" not in str(e):
-                _log.error(str(e))
-                raise
-        # ------------------------------------------------------------------
-        # Original if/elif dispatch — preserved unchanged for light, climate,
-        # and input_boolean domains. To be migrated to handler pattern in Sprint 3.
-        # ------------------------------------------------------------------
+        handler = self.handler_registry.get_handler(domain)
+        command = handler.value_to_command(register.value, entity_point)
+        endpoint = handler.get_service_endpoint(command)
+        payload = handler.build_service_call(entity_id, command, register.value)
 
-        # Changing lights values in home assistant based off of register value.
-        if "light." in register.entity_id:
-            if entity_point == "state":
-                if isinstance(register.value, int) and register.value in [0, 1]:
-                    if register.value == 1:
-                        self.turn_on_lights(register.entity_id)
-                    elif register.value == 0:
-                        self.turn_off_lights(register.entity_id)
-                else:
-                    error_msg = f"State value for {register.entity_id} should be an integer value of 1 or 0"
-                    _log.info(error_msg)
-                    raise ValueError(error_msg)
+        # Preserve existing thermostat temperature conversion behavior.
+        if domain == "climate" and command == "set_temperature" and self.units == "C":
+            payload["temperature"] = round((register.value - 32) * 5/9, 1)
 
-            elif entity_point == "brightness":
-                if isinstance(register.value, int) and 0 <= register.value <= 255:
-                    self.change_brightness(register.entity_id, register.value)
-                else:
-                    error_msg = "Brightness value should be an integer between 0 and 255"
-                    _log.error(error_msg)
-                    raise ValueError(error_msg)
-            else:
-                error_msg = f"Unexpected point_name {point_name} for register {register.entity_id}"
-                _log.error(error_msg)
-                raise ValueError(error_msg)
-
-        elif "input_boolean." in register.entity_id:
-            if entity_point == "state":
-                if isinstance(register.value, int) and register.value in [0, 1]:
-                    if register.value == 1:
-                        self.set_input_boolean(register.entity_id, "on")
-                    elif register.value == 0:
-                        self.set_input_boolean(register.entity_id, "off")
-                else:
-                    error_msg = f"State value for {register.entity_id} should be an integer value of 1 or 0"
-                    _log.info(error_msg)
-                    raise ValueError(error_msg)
-            else:
-                _log.info(f"Currently, input_booleans only support state")
-
-        # Changing thermostat values.
-        elif "climate." in register.entity_id:
-            if entity_point == "state":
-                if isinstance(register.value, int) and register.value in [0, 2, 3, 4]:
-                    if register.value == 0:
-                        self.change_thermostat_mode(entity_id=register.entity_id, mode="off")
-                    elif register.value == 2:
-                        self.change_thermostat_mode(entity_id=register.entity_id, mode="heat")
-                    elif register.value == 3:
-                        self.change_thermostat_mode(entity_id=register.entity_id, mode="cool")
-                    elif register.value == 4:
-                        self.change_thermostat_mode(entity_id=register.entity_id, mode="auto")
-                else:
-                    error_msg = f"Climate state should be an integer value of 0, 2, 3, or 4"
-                    _log.error(error_msg)
-                    raise ValueError(error_msg)
-            elif entity_point == "temperature":
-                self.set_thermostat_temperature(entity_id=register.entity_id, temperature=register.value)
-
-            else:
-                error_msg = f"Currently set_point is supported only for thermostats state and temperature {register.entity_id}"
-                _log.error(error_msg)
-                raise ValueError(error_msg)
-        else:
-            error_msg = f"Unsupported entity_id: {register.entity_id}. " \
-                        f"Currently set_point is supported only for thermostats, lights, and switches"
-            _log.error(error_msg)
-            raise ValueError(error_msg)
+        url = f"http://{self.ip_address}:{self.port}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        _post_method(url, headers, payload, f"{command} {entity_id}")
         return register.value
 
     def get_entity_data(self, point_name):
