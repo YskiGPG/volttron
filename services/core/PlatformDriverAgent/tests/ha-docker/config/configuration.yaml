@@ -1,0 +1,146 @@
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# ----------------------------------------------------------------------
+# VOLTTRON Home Assistant driver — test fixtures
+#
+# Backing storage helpers. These hold the real state; the template
+# entities below read/write them so the driver can target proper
+# `switch.*`, `lock.*`, `cover.*`, `fan.*` entity IDs.
+# ----------------------------------------------------------------------
+
+input_boolean:
+  test_switch_state:
+    name: Test Switch State
+    initial: off
+  test_lock_state:
+    name: Test Lock State
+    initial: off
+  test_cover_state:
+    name: Test Cover State
+    initial: off
+  test_fan_state:
+    name: Test Fan State
+    initial: off
+
+input_number:
+  test_cover_position:
+    name: Test Cover Position
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+  test_fan_percentage:
+    name: Test Fan Percentage
+    min: 0
+    max: 100
+    step: 1
+    initial: 0
+
+# ----------------------------------------------------------------------
+# Template switch — exposes switch.volttron_test_switch
+# ----------------------------------------------------------------------
+switch:
+  - platform: template
+    switches:
+      volttron_test_switch:
+        friendly_name: Volttron Test Switch
+        value_template: "{{ is_state('input_boolean.test_switch_state', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_switch_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_switch_state
+
+# ----------------------------------------------------------------------
+# Template cover — exposes cover.volttron_test_cover
+# state from input_boolean, position from input_number
+# ----------------------------------------------------------------------
+cover:
+  - platform: template
+    covers:
+      volttron_test_cover:
+        friendly_name: Volttron Test Cover
+        value_template: >
+          {% if is_state('input_boolean.test_cover_state', 'on') %}
+            open
+          {% else %}
+            closed
+          {% endif %}
+        position_template: "{{ states('input_number.test_cover_position') | int(0) }}"
+        open_cover:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_cover_state
+        close_cover:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_cover_state
+        set_cover_position:
+          service: input_number.set_value
+          target:
+            entity_id: input_number.test_cover_position
+          data:
+            value: "{{ position }}"
+
+# ----------------------------------------------------------------------
+# Template fan — exposes fan.volttron_test_fan
+# state from input_boolean, percentage from input_number
+# ----------------------------------------------------------------------
+fan:
+  - platform: template
+    fans:
+      volttron_test_fan:
+        friendly_name: Volttron Test Fan
+        value_template: "{{ states('input_boolean.test_fan_state') }}"
+        percentage_template: "{{ states('input_number.test_fan_percentage') | int(0) }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_fan_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_fan_state
+        set_percentage:
+          service: input_number.set_value
+          target:
+            entity_id: input_number.test_fan_percentage
+          data:
+            value: "{{ percentage }}"
+
+# ----------------------------------------------------------------------
+# Template lock — exposes lock.volttron_test_lock
+# Uses the modern `template:` integration (template switch/cover/fan
+# still use the legacy platform form above).
+# ----------------------------------------------------------------------
+template:
+  - lock:
+      - name: Volttron Test Lock
+        unique_id: volttron_test_lock
+        state: >
+          {% if is_state('input_boolean.test_lock_state', 'on') %}
+            locked
+          {% else %}
+            unlocked
+          {% endif %}
+        lock:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_lock_state
+        unlock:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_lock_state
