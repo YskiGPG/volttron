@@ -4,7 +4,17 @@ Home Assistant Driver
 =====================
 
 The Home Assistant driver enables VOLTTRON to read any data point from any Home Assistant controlled device.
-Currently control(write access) is supported only for lights(state and brightness) and thermostats(state and temperature).
+Write access is supported for the following device domains:
+
+- **light** — state (on/off) and brightness (0-255)
+- **climate** — state (off/heat/cool/auto) and temperature
+- **switch** — state (on/off)
+- **lock** — state (locked/unlocked)
+- **cover** — state (open/closed) and position (0-100)
+- **fan** — state (on/off) and percentage (0-100)
+- **input_boolean** — state (on/off)
+
+This driver uses the Home Assistant REST API for communication.
 
 The following diagram shows interaction between platform driver agent and home assistant driver.
 
@@ -61,10 +71,10 @@ Registry Configuration
 +++++++++++++++++++++++
 
 Registry file can contain one single device and its attributes or a logical group of devices and its
-attributes. Each entry should include the full entity id of the device, including but not limited to home assistant provided prefix
-such as "light.",  "climate." etc. The driver uses these prefixes to convert states into integers.
-Like mentioned before, the driver can only control lights and thermostats but can get data from all devices
-controlled by home assistant
+attributes. Each entry should include the full entity id of the device, including the home assistant provided prefix
+such as ``light.``, ``climate.``, ``switch.``, ``lock.``, ``cover.``, ``fan.``, or ``input_boolean.``.
+The driver uses these prefixes to dispatch write operations to the appropriate handler and
+to convert states into integers.
 
 Each entry in a registry file should also have a 'Entity Point' and a unique value for 'Volttron Point Name'. The 'Entity ID' maps to the device instance, the 'Entity Point' extracts the attribute or state, and 'Volttron Point Name' determines the name of that point as it appears in VOLTTRON.
 
@@ -160,6 +170,139 @@ For thermostats, the state is converted into numbers as follows: "0: Off, 2: hea
 
 
 
+Supported Device Types
+**********************
+
+The table below summarizes the device domains the driver can read and write,
+the supported ``Entity Point`` values, and the value range expected by
+``_set_point()``.
+
++----------------+----------------------------+--------------------------------+
+| Domain         | Entity Points              | Value range                    |
++================+============================+================================+
+| light          | state, brightness          | 0/1, 0-255                     |
++----------------+----------------------------+--------------------------------+
+| climate        | state, temperature         | 0/2/3/4, float                 |
++----------------+----------------------------+--------------------------------+
+| switch         | state                      | 0/1                            |
++----------------+----------------------------+--------------------------------+
+| lock           | state                      | 0 (unlock) / 1 (lock)          |
++----------------+----------------------------+--------------------------------+
+| cover          | state, position            | 0/1, 0-100                     |
++----------------+----------------------------+--------------------------------+
+| fan            | state, percentage          | 0/1, 0-100                     |
++----------------+----------------------------+--------------------------------+
+| input_boolean  | state                      | 0/1                            |
++----------------+----------------------------+--------------------------------+
+
+Example Switch Registry
+***********************
+
+Switch state mapping: ``on → 1``, ``off → 0``.
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "switch.living_room_plug",
+           "Entity Point": "state",
+           "Volttron Point Name": "switch_state",
+           "Units": "On / Off",
+           "Units Details": "on/off",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Smart plug in living room"
+       }
+   ]
+
+Example Lock Registry
+*********************
+
+Lock state mapping: ``locked → 1``, ``unlocked → 0``.
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "lock.front_door",
+           "Entity Point": "state",
+           "Volttron Point Name": "lock_state",
+           "Units": "Locked / Unlocked",
+           "Units Details": "locked/unlocked",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Front door smart lock"
+       }
+   ]
+
+Example Cover Registry
+**********************
+
+Cover state mapping: ``open → 1``, ``closed → 0``. ``position`` accepts an
+integer in the range 0-100 and is written via ``set_cover_position``.
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "cover.living_room_blind",
+           "Entity Point": "state",
+           "Volttron Point Name": "cover_state",
+           "Units": "Open / Closed",
+           "Units Details": "open/closed",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Living room blind"
+       },
+       {
+           "Entity ID": "cover.living_room_blind",
+           "Entity Point": "position",
+           "Volttron Point Name": "cover_position",
+           "Units": "Percent",
+           "Units Details": "0-100",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Cover position (0 closed, 100 open)"
+       }
+   ]
+
+Example Fan Registry
+********************
+
+Fan state mapping: ``on → 1``, ``off → 0``. ``percentage`` accepts an integer
+0-100 and is written via ``set_percentage``.
+
+.. code-block:: json
+
+   [
+       {
+           "Entity ID": "fan.ceiling_fan",
+           "Entity Point": "state",
+           "Volttron Point Name": "fan_state",
+           "Units": "On / Off",
+           "Units Details": "on/off",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Ceiling fan"
+       },
+       {
+           "Entity ID": "fan.ceiling_fan",
+           "Entity Point": "percentage",
+           "Volttron Point Name": "fan_percentage",
+           "Units": "Percent",
+           "Units Details": "0-100",
+           "Writable": true,
+           "Starting Value": 0,
+           "Type": "int",
+           "Notes": "Fan speed percentage"
+       }
+   ]
+
 Transfer the registers files and the config files into the VOLTTRON config store using the commands below:
 
 .. code-block:: bash
@@ -178,9 +321,22 @@ Upon completion, initiate the platform driver. Utilize the listener agent to ver
 
 Running Tests
 +++++++++++++++++++++++
-To run tests on the VOLTTRON home assistant driver you need to create a helper in your home assistant instance. This can be done by going to **Settings > Devices & services > Helpers > Create Helper > Toggle**. Name this new toggle **volttrontest**. After that run the pytest from the root of your VOLTTRON file.
 
-.. code-block:: bash
-    pytest volttron/services/core/PlatformDriverAgent/tests/test_home_assistant.py
+The driver ships with two layers of tests:
 
-If everything works, you will see 6 passed tests.
+1. **Pure-Python unit tests** — no Home Assistant instance required. They
+   validate the ``WriteHandler`` subclasses, the ``HandlerRegistry`` and the
+   ``_scrape_all()`` / ``get_point()`` logic by mocking HTTP responses.
+
+   .. code-block:: bash
+
+      pytest services/core/PlatformDriverAgent/tests/test_home_assistant_handlers.py -v
+      pytest services/core/PlatformDriverAgent/tests/test_home_assistant_scrape.py -v
+
+2. **Integration tests** — require a live Home Assistant instance. Create a
+   helper by going to **Settings > Devices & services > Helpers > Create
+   Helper > Toggle** and name it **volttrontest**, then run:
+
+   .. code-block:: bash
+
+      pytest services/core/PlatformDriverAgent/tests/test_home_assistant.py -v
