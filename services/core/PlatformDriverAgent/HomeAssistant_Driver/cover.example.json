@@ -1,0 +1,24 @@
+[
+    {
+        "Entity ID": "cover.living_room_blind",
+        "Entity Point": "state",
+        "Volttron Point Name": "cover_state",
+        "Units": "Open / Closed",
+        "Units Details": "open/closed",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Living room blind state (0: closed, 1: open)"
+    },
+    {
+        "Entity ID": "cover.living_room_blind",
+        "Entity Point": "position",
+        "Volttron Point Name": "cover_position",
+        "Units": "Percent",
+        "Units Details": "0-100",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Cover position (0: fully closed, 100: fully open)"
+    }
+]

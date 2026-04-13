@@ -1,0 +1,24 @@
+[
+    {
+        "Entity ID": "fan.ceiling_fan",
+        "Entity Point": "state",
+        "Volttron Point Name": "fan_state",
+        "Units": "On / Off",
+        "Units Details": "on/off",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Ceiling fan state (0: off, 1: on)"
+    },
+    {
+        "Entity ID": "fan.ceiling_fan",
+        "Entity Point": "percentage",
+        "Volttron Point Name": "fan_percentage",
+        "Units": "Percent",
+        "Units Details": "0-100",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Fan speed percentage"
+    }
+]

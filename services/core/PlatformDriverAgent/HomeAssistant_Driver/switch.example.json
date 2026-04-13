@@ -1,0 +1,13 @@
+[
+    {
+        "Entity ID": "switch.living_room_plug",
+        "Entity Point": "state",
+        "Volttron Point Name": "switch_state",
+        "Units": "On / Off",
+        "Units Details": "on/off",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Smart plug in living room (0: off, 1: on)"
+    }
+]

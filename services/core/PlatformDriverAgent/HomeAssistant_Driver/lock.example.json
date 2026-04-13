@@ -1,0 +1,13 @@
+[
+    {
+        "Entity ID": "lock.front_door",
+        "Entity Point": "state",
+        "Volttron Point Name": "lock_state",
+        "Units": "Locked / Unlocked",
+        "Units Details": "locked/unlocked",
+        "Writable": true,
+        "Starting Value": 0,
+        "Type": "int",
+        "Notes": "Front door smart lock (0: unlocked, 1: locked)"
+    }
+]
