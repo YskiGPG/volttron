@@ -23,8 +23,6 @@
 # }}}
 
 
-import random
-from math import pi
 import json
 import sys
 from abc import ABC, abstractmethod
@@ -485,6 +483,17 @@ def create_default_registry() -> HandlerRegistry:
 # =============================================================================
 
 
+STATE_MAPS = {
+    "climate": {"off": 0, "heat": 2, "cool": 3, "auto": 4},
+    "light": {"on": 1, "off": 0},
+    "input_boolean": {"on": 1, "off": 0},
+    "switch": {"on": 1, "off": 0},
+    "fan": {"on": 1, "off": 0},
+    "lock": {"locked": 1, "unlocked": 0},
+    "cover": {"open": 1, "closed": 0},
+}
+
+
 class HomeAssistantRegister(BaseRegister):
     def __init__(self, read_only, pointName, units, reg_type, attributes, entity_id, entity_point, default_value=None,
                  description=''):
@@ -546,11 +555,11 @@ class Interface(BasicRevert, BaseInterface):
         register = self.get_register_by_name(point_name)
 
         entity_data = self.get_entity_data(register.entity_id)
-        if register.point_name == "state":
+        if register.entity_point == "state":
             result = entity_data.get("state", None)
             return result
         else:
-            value = entity_data.get("attributes", {}).get(f"{register.point_name}", 0)
+            value = entity_data.get("attributes", {}).get(f"{register.entity_point}", 0)
             return value
 
     def _set_point(self, point_name, value):
@@ -690,58 +699,32 @@ class Interface(BasicRevert, BaseInterface):
         for register in read_registers + write_registers:
             entity_id = register.entity_id
             entity_point = register.entity_point
+            domain = entity_id.split(".")[0]
             try:
-                entity_data = self.get_entity_data(entity_id)  # Using Entity ID to get data
-                if "climate." in entity_id:  # handling thermostats.
-                    if entity_point == "state":
-                        state = entity_data.get("state", None)
-                        # Giving thermostat states an equivalent number.
-                        if state == "off":
-                            register.value = 0
-                            result[register.point_name] = 0
-                        elif state == "heat":
-                            register.value = 2
-                            result[register.point_name] = 2
-                        elif state == "cool":
-                            register.value = 3
-                            result[register.point_name] = 3
-                        elif state == "auto":
-                            register.value = 4
-                            result[register.point_name] = 4
+                entity_data = self.get_entity_data(entity_id)
+
+                if entity_point == "state":
+                    state = entity_data.get("state", None)
+                    state_map = STATE_MAPS.get(domain)
+                    if state_map is not None:
+                        if state in state_map:
+                            value = state_map[state]
                         else:
-                            error_msg = f"State {state} from {entity_id} is not yet supported"
+                            error_msg = (
+                                f"State '{state}' from {entity_id} is not supported "
+                                f"for domain '{domain}'. Expected one of: {list(state_map.keys())}"
+                            )
                             _log.error(error_msg)
-                            ValueError(error_msg)
-                    # Assigning attributes
+                            raise ValueError(error_msg)
                     else:
-                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
-                        register.value = attribute
-                        result[register.point_name] = attribute
-                # handling light states
-                elif "light." or "input_boolean." in entity_id:
-                    if entity_point == "state":
-                        state = entity_data.get("state", None)
-                        # Converting light states to numbers.
-                        if state == "on":
-                            register.value = 1
-                            result[register.point_name] = 1
-                        elif state == "off":
-                            register.value = 0
-                            result[register.point_name] = 0
-                    else:
-                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
-                        register.value = attribute
-                        result[register.point_name] = attribute
-                else:  # handling all devices that are not thermostats or light states
-                    if entity_point == "state":
-                        state = entity_data.get("state", None)
-                        register.value = state
-                        result[register.point_name] = state
-                    # Assigning attributes
-                    else:
-                        attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
-                        register.value = attribute
-                        result[register.point_name] = attribute
+                        # Unknown domain: fall back to storing raw state string.
+                        value = state
+                    register.value = value
+                    result[register.point_name] = value
+                else:
+                    attribute = entity_data.get("attributes", {}).get(f"{entity_point}", 0)
+                    register.value = attribute
+                    result[register.point_name] = attribute
             except Exception as e:
                 _log.error(f"An unexpected error occurred for entity_id: {entity_id}: {e}")
 
@@ -783,6 +766,14 @@ class Interface(BasicRevert, BaseInterface):
                 self.set_default(self.point_name, register.value)
 
             self.insert_register(register)
+
+    # ------------------------------------------------------------------
+    # DEPRECATED METHODS
+    # The following methods are no longer called by _set_point() after
+    # the Sprint 2-3 Strategy Pattern refactor. All write operations
+    # now go through: _set_point() → HandlerRegistry → WriteHandler.
+    # Retained for backward compatibility.
+    # ------------------------------------------------------------------
 
     def turn_off_lights(self, entity_id):
         url = f"http://{self.ip_address}:{self.port}/api/services/light/turn_off"
